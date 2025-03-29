@@ -1,0 +1,1 @@
+Fix the map but have no mines. User must create them

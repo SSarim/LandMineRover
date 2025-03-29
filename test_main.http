@@ -1,0 +1,21 @@
+# Test  FastAPI endpoints
+GET 127.0.0.1:8000/map
+Accept: application/json
+###
+
+GET 127.0.0.1:8000/mines
+Accept: application/json
+###
+
+GET 127.0.0.1:8000/mines/{mine_id}
+Accept: application/json
+###
+
+GET 127.0.0.1:8000/rovers
+Accept: application/json
+###
+
+GET 127.0.0.1:8000/rovers/{rover_id}
+Accept: application/json
+###
+

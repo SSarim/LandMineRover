@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Demining Operator Dashboard</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 20px;
+      background-color: #f4f7f9;
+      color: #333;
+    }
+
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 10px;
+    }
+
+    .note {
+      font-size: 0.9em;
+      color: #666;
+      margin-bottom: 20px;
+    }
+
+    .section {
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid #dfe6e9;
+      padding: 20px;
+      margin-bottom: 25px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+
+    h2, h3, h4 {
+      color: #34495e;
+      margin-top: 0;
+    }
+
+    form {
+      margin-top: 10px;
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      padding: 6px;
+      margin: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    button {
+      padding: 6px 12px;
+      background-color: #2980b9;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #3498db;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin-top: 10px;
+      width: 100%;
+    }
+
+    th, td {
+      width: 40px;
+      height: 40px;
+      text-align: center;
+      border: 1px solid #bdc3c7;
+      cursor: pointer;
+    }
+
+    .mine {
+      background-color: #e74c3c;
+      color: white;
+    }
+
+    .rover-path {
+      background-color: #2ecc71;
+    }
+
+    #ws-messages {
+      margin-top: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background-color: #f8f9fa;
+    }
+
+    #ws-control {
+      margin-top: 10px;
+      display: none;
+    }
+
+    .ws-cmd {
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+
+    #dispatch-status {
+      display: inline-block;
+      margin-left: 10px;
+      font-style: italic;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>Demining Operator Dashboard</h1>
+  <p class="note">
+    Mines are disarmed by computing a PIN such that the SHA256 hash of the mine serial concatenated with the PIN starts with "000000". This process may take some time.
+  </p>
+
+  <div class="section" id="map-section">
+    <h2>Field Map</h2>
+    <div id="map-container"></div>
+    <button id="refresh-map-btn">Refresh Map</button>
+  </div>
+
+  <div class="section" id="mines-section">
+    <h2>Mines Management</h2>
+    <div id="mines1"></div>
+    <h3>Create Mine</h3>
+    <form id="create-mine-form">
+      <label>Serial: <input type="text" id="mine-serial" required></label>
+      <label>X: <input type="number" id="mine-x" required></label>
+      <label>Y: <input type="number" id="mine-y" required></label>
+      <button type="submit">Create Mine</button>
+    </form>
+  </div>
+
+  <div class="section" id="rovers-section">
+    <h2>Rovers Management</h2>
+    <p class="note">All the rovers will start at (0,0), facing south (Direction 2)</p>\
+    <p class="note"> For direction references: North(0), East (1), South (2), West (3)</p>
+    <div id="rovers-list"></div>
+
+    <h3>Create Rover</h3>
+    <form id="create-rover-form">
+      <label>Commands (as String): <input type="text" id="rover-commands" required></label>
+      <button type="submit">Create Rover</button>
+    </form>
+
+    <h3>Dispatch / Control Rover</h3>
+    <form id="dispatch-rover-form">
+      <label>Rover ID: <input type="number" id="dispatch-rover-id" required></label>
+      <button type="submit" id="dispatch-btn">Dispatch via HTTP</button>
+      <span id="dispatch-status" class="note"></span>
+    </form>
+
+    <button id="open-ws-btn">Open WebSocket Control</button>
+
+    <div id="ws-control">
+      <h3>Real-Time Control</h3>
+      <p id="ws-status">Disconnected</p>
+      <button class="ws-cmd" data-cmd="L">L (Turn Left)</button>
+      <button class="ws-cmd" data-cmd="R">R (Turn Right)</button>
+      <button class="ws-cmd" data-cmd="M">M (Move Forward)</button>
+      <button class="ws-cmd" data-cmd="D">D (Dig/Disarm)</button>
+      <div id="ws-messages"></div>
+    </div>
+  </div>
+
+
+  <script>
+    const serverUrl = "http://localhost:8000";
+
+    async function loadMap() {
+      const res = await fetch(serverUrl + "/map", {method: "GET"});
+      const data = await res.json();
+      const map = data.map;
+      const container = document.getElementById("map-container");
+      container.innerHTML = "";
+      const table = document.createElement("table");
+      for (let r = 0; r < map.length; r++) {
+        const row = document.createElement("tr");
+        for (let c = 0; c < map[r].length; c++) {
+          const cell = document.createElement("td");
+          cell.textContent = map[r][c] === 0 ? "" : "M";
+          if (map[r][c] !== 0) {
+            cell.classList.add("mine");
+          }
+          cell.addEventListener("click", () => {
+            document.getElementById("mine-x").value = c;
+            document.getElementById("mine-y").value = r;
+          });
+          row.appendChild(cell);
+        }
+        table.appendChild(row);
+      }
+      container.appendChild(table);
+    }
+
+    async function loadMines() {
+      const res = await fetch(serverUrl + "/mines", {method: "GET"});
+      const data = await res.json();
+      const minesList = document.getElementById("mines1");
+      minesList.innerHTML = "<h4>Existing Mines</h4>";
+      data.mines.forEach(mine => {
+        const div = document.createElement("div");
+        div.textContent = `ID: ${mine.id} (X: ${mine.col}, Y: ${mine.row})`;
+        minesList.appendChild(div);
+      });
+    }
+
+    async function loadRovers() {
+      const res = await fetch(serverUrl + "/rovers");
+      const data = await res.json();
+      const roversList = document.getElementById("rovers-list");
+      roversList.innerHTML = "<h4>Existing Rovers</h4>";
+      data.rovers.forEach(rover => {
+        const div = document.createElement("div");
+        div.textContent = `ID: ${rover.id}, Status: ${rover.status}`;
+        roversList.appendChild(div);
+      });
+    }
+
+    document.getElementById("refresh-map-btn").addEventListener("click", loadMap);
+    document.getElementById("create-mine-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      const serialNum = parseInt(document.getElementById("mine-serial").value);
+      const row = parseInt(document.getElementById("mine-y").value);
+      const col = parseInt(document.getElementById("mine-x").value);
+
+      const res = await fetch(serverUrl + "/mines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ row, col, serialNum })
+      });
+      const data = await res.json();
+      alert(data.message);
+      loadMap();
+      loadMines();
+});
+
+
+    document.getElementById("create-rover-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const commands = document.getElementById("rover-commands").value;
+      const res = await fetch(serverUrl + "/rovers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commands })
+      });
+      const data = await res.json();
+      alert(data.message + " ID: " + data.id);
+      loadRovers();
+    });
+
+    document.getElementById("dispatch-rover-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const dispatchStatus = document.getElementById("dispatch-status");
+      const dispatchBtn = document.getElementById("dispatch-btn");
+      dispatchStatus.textContent = "Dispatching rover, please wait...";
+      dispatchBtn.disabled = true;
+      const rover_id = document.getElementById("dispatch-rover-id").value;
+      const res = await fetch(serverUrl + "/rovers/" + rover_id + "/dispatch", { method: "POST" });
+      const data = await res.json();
+      alert(data.message);
+      dispatchStatus.textContent = "";
+      dispatchBtn.disabled = false;
+      loadRovers();
+      loadMap();
+    });
+
+    let ws;
+    document.getElementById("open-ws-btn").addEventListener("click", async () => {
+      const rover_id = prompt("Enter Rover ID for WebSocket control:");
+      if (!rover_id) return;
+      ws = new WebSocket("ws://localhost:8000/ws/rovers/" + rover_id);
+      ws.onopen = () => {
+        document.getElementById("ws-status").textContent = "Connected";
+        document.getElementById("ws-control").style.display = "block";
+      };
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        const wsMessages = document.getElementById("ws-messages");
+        const div = document.createElement("div");
+        div.textContent = JSON.stringify(msg);
+        wsMessages.appendChild(div);
+        if (msg.command === "D" && msg.result === true) {
+          loadMap();
+          loadMines();
+        }
+      };
+      ws.onclose = () => {
+        document.getElementById("ws-status").textContent = "Disconnected";
+      };
+    });
+
+    document.querySelectorAll(".ws-cmd").forEach(button => {
+      button.addEventListener("click", () => {
+        const cmd = button.getAttribute("data-cmd");
+        if(ws && ws.readyState === WebSocket.OPEN){
+          ws.send(cmd);
+        } else {
+          alert("WebSocket not connected");
+        }
+      });
+    });
+
+    loadMap();
+    loadMines();
+    loadRovers();
+  </script>
+</body>
+</html>
