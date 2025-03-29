@@ -26,6 +26,7 @@ def generate_map_grid(row=None, col=None, update_change=True):
 
         return grid, mines
 
+
 # APU Rover command
 def get_rover_commands(rover_id):
     api = 'https://coe892.reev.dev/lab1/rover'
@@ -35,6 +36,7 @@ def get_rover_commands(rover_id):
         return content['data']['moves']
     else:
         raise Exception("Failed to fetch api")
+
 
 # Directions
 def update_direction(curr_direction, move) -> str:
@@ -62,6 +64,7 @@ def update_direction(curr_direction, move) -> str:
         else:
             return "SOUTH"
 
+
 # Deminer Disarm function for the rover
 def disarm_mine(serial_num: str) -> int:
     pin = 0
@@ -75,4 +78,3 @@ def disarm_mine(serial_num: str) -> int:
         temp_mine_key = str(pin) + serial_num
         hashed_data = sha256(temp_mine_key.encode()).hexdigest()
         pin += 1
-

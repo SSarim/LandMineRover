@@ -18,7 +18,7 @@ origins = [
     # "http://localhost:80",
     # "http://localhost:8080",
     "http://localhost:8000",
-    # "https://coe892lab42024g.azurewebsites.net/*"
+    "https://coe892lab42025G.azurewebsites.net/*"
 ]
 # Rover statuses
 ROVER_IDLE = "ROVER IS IDLE"
@@ -29,17 +29,17 @@ ROVER_STATUS_ELIMINATED = "ROVER STATUS: ELIMINATED"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=True
 )
 
 # Static files directory and use created front end index.html
-app.mount("/static", StaticFiles(directory="templates", html=True), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
 @app.get("/", response_class=HTMLResponse)
 async def read_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
 
 # Global data notations --> map, mines, rovers, commands
 grid, mines = helper.generate_map_grid(row=5, col=10, update_change=True)
@@ -49,26 +49,32 @@ id_list = random.sample(range(100, 1000), 900)
 valid_commands = ['L', 'R', 'M', 'D']
 state_lock = threading.Lock()
 
+
 # Pydantic Model Setup
 class MapDimensions(BaseModel):
     row: int
     col: int
+
 
 class MineCreate(BaseModel):
     row: int
     col: int
     serialNum: int
 
+
 class MineUpdate(BaseModel):
     row: Optional[int] = None
     col: Optional[int] = None
     serialNum: Optional[int] = None
 
+
 class RoverCreate(BaseModel):
     commands: str
 
+
 class RoverUpdate(BaseModel):
     commands: str
+
 
 # Endpoints (Map)
 @app.get("/map", status_code=status.HTTP_200_OK)
@@ -80,6 +86,7 @@ def get_map():
             "map": grid
         }
 
+
 @app.put("/map", status_code=status.HTTP_201_CREATED)
 def update_map(dim: MapDimensions):
     global grid, mines
@@ -88,12 +95,14 @@ def update_map(dim: MapDimensions):
         grid[0][0] = 0
         return {"message": "Map updated", "row": len(grid), "col": len(grid[0]), "map": grid}
 
+
 # Endpoints (Mines)
 @app.get("/mines")
 def get_mines_endpoint():
     with state_lock:
         mines1 = [{"row": m[0], "col": m[1], "id": m[2]} for m in mines]
         return {"mines": mines1}
+
 
 @app.get("/mines/{id}")
 def get_mine_endpoint(id: int):
@@ -102,6 +111,7 @@ def get_mine_endpoint(id: int):
             if m[2] == id:
                 return {"row": m[0], "col": m[1], "id": m[2]}
         raise HTTPException(status_code=404, detail="Mine not found")
+
 
 @app.delete("/mines/{id}")
 def delete_mine_endpoint(id: int):
@@ -115,14 +125,17 @@ def delete_mine_endpoint(id: int):
                 return {"message": "Mine deleted"}
         raise HTTPException(status_code=404, detail="Mine not found")
 
+
 @app.post("/mines")
 def create_mine_endpoint(new_mine: MineCreate):
     with state_lock:
         if grid[new_mine.row][new_mine.col]:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mine already exists at the given location")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Mine already exists at the given location")
         grid[new_mine.row][new_mine.col] = 1
         mines.append([new_mine.row, new_mine.col, new_mine.serialNum])
         return {"message": "Mine created", "id": new_mine.serialNum}
+
 
 @app.put("/mines/{id}")
 def update_mine_endpoint(id: int, mine_update: MineUpdate):
@@ -140,11 +153,13 @@ def update_mine_endpoint(id: int, mine_update: MineUpdate):
                 return {"message": "Mine updated", "row": new_row, "col": new_col, "id": new_serial}
         raise HTTPException(status_code=404, detail="Mine not found")
 
+
 # Endpoints (Rover)
 @app.get("/rovers")
 def get_rovers_endpoint():
     with state_lock:
         return {"rovers": rovers}
+
 
 @app.get("/rovers/{id}")
 def get_rover_endpoint(id: int):
@@ -153,6 +168,7 @@ def get_rover_endpoint(id: int):
             if rover["id"] == id:
                 return rover
         raise HTTPException(status_code=404, detail="Rover not found")
+
 
 @app.post("/rovers")
 def create_rover_endpoint(rover_data: RoverCreate):
@@ -173,6 +189,7 @@ def create_rover_endpoint(rover_data: RoverCreate):
         rovers.append(rover)
         return {"message": "New Rover created", "id": new_id}
 
+
 @app.delete("/rovers/{id}")
 def delete_rover_endpoint(id: int):
     with state_lock:
@@ -182,23 +199,27 @@ def delete_rover_endpoint(id: int):
                 return {"message": "Rover deleted"}
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Rover with id {id} not found")
 
+
 @app.put("/rovers/{id}")
 def update_rover_endpoint(id: int, rover_update: RoverUpdate):
     with state_lock:
         for rover in rovers:
             if rover["id"] == id:
                 if rover["status"] not in [ROVER_IDLE, ROVER_OPERATION_FINISHED]:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot update commands while rover is in progress")
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                        detail="Cannot update commands while rover is in progress")
                 new_cmd = rover_update.commands.upper()
                 for cmd in new_cmd:
                     if cmd not in valid_commands:
-                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid command in command list")
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                            detail="Invalid command in command list")
                 rover["commands"] = new_cmd
                 rover["executed_commands"] = ""
                 rover["status"] = ROVER_IDLE
                 rover["position"] = (0, 0)
                 return {"message": "Rover commands updated", "rover": rover}
         raise HTTPException(status_code=404, detail="Rover not found")
+
 
 @app.post("/rovers/{id}/dispatch")
 def dispatch_rover_endpoint(id: int):
@@ -259,9 +280,11 @@ def dispatch_rover_endpoint(id: int):
                 return {"message": "Rover dispatched successfully", "rover": rover}
         raise HTTPException(status_code=404, detail="Rover not found")
 
+
 @app.get("/commands/{id}")
 def get_commands_endpoint(id: int):
     return {"commands": helper.get_rover_commands(id)}
+
 
 # Endpoint (WebSockets)
 @app.websocket("/ws/rovers/{id}")
@@ -368,7 +391,7 @@ async def websocket_control_rover(websocket: WebSocket, id: int):
 
 # Disarming Mine (similar to Deminer)
 def disarm_mine(serial) -> str:
-    serial = str(serial)  # Convert the mine serial to a string
+    serial = str(serial)
     pin = 0
     while True:
         candidate = str(pin)
