@@ -13,10 +13,6 @@ import hashlib
 # SET UP
 app = FastAPI()
 origins = [
-    # "http://localhost.*",
-    # "https://localhost/*",
-    # "http://localhost:80",
-    # "http://localhost:8080",
     "http://localhost:8000",
     "https://coe892lab42025G.azurewebsites.net/*"
 ]
