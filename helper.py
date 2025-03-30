@@ -1,11 +1,10 @@
+# Sarim Shahwar
+import hashlib
 import json
 import random
 import requests
-from hashlib import sha256
 
-
-# Creating a grid map (Blank initially)
-def generate_map_grid(row=None, col=None, update_change=True):
+def generate_map_grid(row, col, update_change=True):
     grid = []
     mines = []
     if update_change:
@@ -23,11 +22,8 @@ def generate_map_grid(row=None, col=None, update_change=True):
                 else:
                     curr_row.append(0)
             grid.append(curr_row)
-
         return grid, mines
 
-
-# APU Rover command
 def get_rover_commands(rover_id):
     api = 'https://coe892.reev.dev/lab1/rover'
     r = requests.get(f'{api}/{rover_id}')
@@ -35,46 +31,37 @@ def get_rover_commands(rover_id):
         content = json.loads(r.content)
         return content['data']['moves']
     else:
-        raise Exception("Failed to fetch api")
+        raise Exception("Failed to fetch API")
 
-
-# Directions
-def update_direction(curr_direction, move) -> str:
-    if curr_direction == "NORTH":
-        if move == "L":
-            return "WEST"
+# added as it's a pain to use numbers as directions :P
+direction_map = ["North", "East", "South", "West"]
+def format_response_message(response: dict) -> str:
+    if "error" in response:
+        return f"❌ Error: {response['error']}"
+    elif response["command"] == "M":
+        if response["result"]:
+            return f"✅ Move successful → New Position: {response['new_position']}"
         else:
-            return "EAST"
-
-    elif curr_direction == "WEST":
-        if move == "L":
-            return "SOUTH"
+            return f"❌ Move failed: {response['error']}"
+    elif response["command"] == "L":
+        return f"↩️ Turned Left → New Direction: {direction_map[response['direction']]}"
+    elif response["command"] == "R":
+        return f"↪️ Turned Right → New Direction: {direction_map[response['direction']]}"
+    elif response["command"] == "D":
+        if response.get("result"):
+            return f"🛠️ Disarmed Mine → PIN: {response['pin']}"
         else:
-            return "NORTH"
+            return f"❌ Disarm Failed: {response['error']}"
+    return f"ℹ️ Executed Command: {response['command']}"
 
-    if curr_direction == "SOUTH":
-        if move == "L":
-            return "EAST"
-        else:
-            return "WEST"
-
-    if curr_direction == "EAST":
-        if move == "L":
-            return "NORTH"
-        else:
-            return "SOUTH"
-
-
-# Deminer Disarm function for the rover
-def disarm_mine(serial_num: str) -> int:
+# Deminer (from prev testing)
+def disarm_mine(serial) -> str:
+    serial = str(serial)
     pin = 0
-    temp_mine_key = str(pin) + serial_num
-    hashed_data = sha256(temp_mine_key.encode()).hexdigest()
-    print(f' [-] Initial Hash: {hashed_data}')
     while True:
-        if hashed_data[0:6] == '000000':
-            print(f' [-] Completed Hash: {hashed_data}')
-            return pin
-        temp_mine_key = str(pin) + serial_num
-        hashed_data = sha256(temp_mine_key.encode()).hexdigest()
+        candidate = str(pin)
+        temp_key = serial + candidate
+        hashed = hashlib.sha256(temp_key.encode('utf-8')).hexdigest()
+        if hashed.startswith("000000"):
+            return candidate
         pin += 1

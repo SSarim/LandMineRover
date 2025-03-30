@@ -1,208 +1,118 @@
-# test_rover_server.py
+from fastapi.testclient import TestClient
+from rover_server import *
 
-import json
-import pytest
-from starlette.testclient import TestClient
+client = TestClient(app)
 
-from rover_server import app  # import the Flask app
-
-
-# test_client_patch.py
-
-from starlette.testclient import TestClient as BaseTestClient
-
-
-class TestClient(BaseTestClient):
-    def post(self, *args, **kwargs):
-        if "content_type" in kwargs:
-            ct = kwargs.pop("content_type")
-            # Merge with any existing headers or create a new headers dict.
-            kwargs.setdefault("headers", {})["Content-Type"] = ct
-        return super().post(*args, **kwargs)
-
-    def put(self, *args, **kwargs):
-        if "content_type" in kwargs:
-            ct = kwargs.pop("content_type")
-            kwargs.setdefault("headers", {})["Content-Type"] = ct
-        return super().put(*args, **kwargs)
-
-
-# Test getting the current map
-def test_get_map(client):
+def test_get_map():
     response = client.get("/map")
     assert response.status_code == 200
     data = response.json()
-    # Optionally validate details of the map structure
-    assert "rows" in data or "cols" in data
+    assert "row" in data
+    assert "col" in data
+    assert "map" in data
 
+def test_update_map():
+    new_dimensions = {"row": 6, "col": 6}
+    response = client.put("/map", json=new_dimensions)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["row"] == 6
+    assert data["col"] == 6
+    assert "map" in data
 
-# Test updating the map
-def test_update_map(client):
-    payload = {"rows": 6, "cols": 6}
-    response = client.put("/map", data=json.dumps(payload), content_type="application/json")
-    # Assuming a successful update returns 200 OK or 204 No Content
-    assert response.status_code in (200, 204)
+def test_create_and_get_mine():
+    # Create a mine
+    mine_payload = {"row": 2, "col": 2, "serialNum": 1234}
+    response = client.post("/mines", json=mine_payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "message" in data
+    mine_id = mine_payload["serialNum"]
 
+    # Get list of mines and check our mine is present
+    response = client.get("/mines")
+    assert response.status_code == 200
+    data = response.json()
+    mines_list = data.get("mines", [])
+    assert any(m["id"] == mine_id for m in mines_list)
 
-# Test creating a mine and then retrieving it
-def test_create_and_get_mine(client):
-    payload = {"serial": "M001", "x": 1, "y": 2}
-    post_response = client.post("/mines", data=json.dumps(payload), content_type="application/json")
-    assert post_response.status_code == 201
-    mine = post_response.json()
-    mine_id = mine.get("id")
-    assert mine_id is not None
+    # Get individual mine by id
+    response = client.get(f"/mines/{mine_id}")
+    assert response.status_code == 200
+    mine_data = response.json()
+    assert mine_data["row"] == mine_payload["row"]
+    assert mine_data["col"] == mine_payload["col"]
 
-    # Fetch the created mine
-    get_response = client.get(f"/mines/{mine_id}")
-    assert get_response.status_code == 200
-    mine_data = get_response.json()
-    assert mine_data["serial"] == "M001"
-
-
-# Test updating an existing mine
-def test_update_mine(client):
-    # First, create a mine
-    payload_create = {"serial": "M002", "x": 2, "y": 3}
-    post_response = client.post("/mines", data=json.dumps(payload_create), content_type="application/json")
-    assert post_response.status_code == 201
-    mine_id = post_response.json().get("id")
-    assert mine_id is not None
-
-    # Then, update the mine
-    payload_update = {"serial": "M002-updated", "x": 3, "y": 4}
-    put_response = client.put(f"/mines/{mine_id}", data=json.dumps(payload_update), content_type="application/json")
-    assert put_response.status_code == 200
-
-    # Verify the update
-    get_response = client.get(f"/mines/{mine_id}")
-    mine_data = get_response.json()
-    assert mine_data["serial"] == "M002-updated"
-
-
-# Test deleting a mine
-def test_delete_mine(client):
+def test_delete_mine():
     # Create a mine to delete
-    payload = {"serial": "M003", "x": 3, "y": 4}
-    post_response = client.post("/mines", data=json.dumps(payload), content_type="application/json")
-    assert post_response.status_code == 201
-    mine_id = post_response.json().get("id")
-    assert mine_id is not None
+    mine_payload = {"row": 3, "col": 3, "serialNum": 5678}
+    response = client.post("/mines", json=mine_payload)
+    assert response.status_code == 200
 
-    # Now delete the mine
-    delete_response = client.delete(f"/mines/{mine_id}")
-    # Depending on your API, deletion might return 200 OK or 204 No Content
-    assert delete_response.status_code in (200, 204)
+    # Delete the mine
+    response = client.delete(f"/mines/{mine_payload['serialNum']}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "message" in data
 
-    # Verify that the mine no longer exists
-    get_response = client.get(f"/mines/{mine_id}")
-    assert get_response.status_code == 404
+    # Ensure the mine is no longer there
+    response = client.get(f"/mines/{mine_payload['serialNum']}")
+    assert response.status_code == 404
 
+def test_create_and_get_rover():
+    rover_payload = {"commands": "MRMLM"}
+    response = client.post("/rovers", json=rover_payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "id" in data
+    rover_id = data["id"]
 
-# Test disarming a mine
-def test_disarm_mine(client):
-    # Create a mine first
-    payload = {"serial": "M004", "x": 4, "y": 5}
-    post_response = client.post("/mines", data=json.dumps(payload), content_type="application/json")
-    assert post_response.status_code == 201
-    mine_id = post_response.json().get("id")
-    assert mine_id is not None
+    # Get the created rover
+    response = client.get(f"/rovers/{rover_id}")
+    assert response.status_code == 200
+    rover_data = response.json()
+    assert rover_data["commands"] == "MRMLM"
+    assert rover_data["status"] == "ROVER IS IDLE"
 
-    # Disarm the created mine (using a hypothetical endpoint)
-    disarm_response = client.post(f"/mines/{mine_id}/disarm")
-    assert disarm_response.status_code == 200
-    # Optionally, verify if additional status or details have changed
+    # Update rover commands
+    update_payload = {"commands": "MMR"}
+    response = client.put(f"/rovers/{rover_id}", json=update_payload)
+    assert response.status_code == 200
+    updated_data = response.json()
+    assert updated_data["rover"]["commands"] == "MMR"
 
+def test_dispatch_rover():
+    # Create a rover for dispatching
+    rover_payload = {"commands": "MMR"}
+    response = client.post("/rovers", json=rover_payload)
+    assert response.status_code == 200
+    data = response.json()
+    rover_id = data["id"]
 
-# Test creating a rover and retrieving it
-def test_create_and_get_rover(client):
-    payload = {"commands": "FFRLF"}
-    post_response = client.post("/rovers", data=json.dumps(payload), content_type="application/json")
-    assert post_response.status_code == 201
-    rover = post_response.json()
-    rover_id = rover.get("id")
-    assert rover_id is not None
+    # Dispatch the rover
+    response = client.post(f"/rovers/{rover_id}/dispatch")
+    assert response.status_code == 200
+    dispatch_data = response.json()
+    assert "message" in dispatch_data
+    assert "rover" in dispatch_data
 
-    # Retrieve the created rover
-    get_response = client.get(f"/rovers/{rover_id}")
-    assert get_response.status_code == 200
-    rover_data = get_response.json()
-    assert rover_data.get("commands") == "MMRLM"
+def test_get_commands():
+    # External API test
+    response = client.get("/commands/1")
+    assert response.status_code == 200
+    data = response.json()
+    assert "commands" in data
 
+def test_websocket_rover_control():
+    # Create a rover to control via WebSocket
+    rover_payload = {"commands": "MMLD"}
+    response = client.post("/rovers", json=rover_payload)
+    assert response.status_code == 200
+    data = response.json()
+    rover_id = data["id"]
 
-# Test updating an existing rover
-def test_update_rover(client):
-    # First, create a rover
-    payload = {"commands": "FFRLF"}
-    post_response = client.post("/rovers", data=json.dumps(payload), content_type="application/json")
-    assert post_response.status_code == 201
-    rover_id = post_response.json().get("id")
-    assert rover_id is not None
-
-    # Now update the rover
-    update_payload = {"commands": "LRFF"}
-    put_response = client.put(f"/rovers/{rover_id}", data=json.dumps(update_payload), content_type="application/json")
-    assert put_response.status_code == 200
-
-    # Verify the update
-    get_response = client.get(f"/rovers/{rover_id}")
-    rover_data = get_response.json()
-    assert rover_data.get("commands") == "LRFF"
-
-
-# Test deleting a rover
-def test_delete_rover(client):
-    # Create a rover first
-    payload = {"commands": "FFRLF"}
-    post_response = client.post("/rovers", data=json.dumps(payload), content_type="application/json")
-    assert post_response.status_code == 201
-    rover_id = post_response.json().get("id")
-    assert rover_id is not None
-
-    # Delete the rover
-    delete_response = client.delete(f"/rovers/{rover_id}")
-    assert delete_response.status_code in (200, 204)
-
-    # Verify deletion
-    get_response = client.get(f"/rovers/{rover_id}")
-    assert get_response.status_code == 404
-
-
-# Test dispatching a rover
-def test_dispatch_rover(client):
-    # Create a rover to dispatch
-    payload = {"commands": "FFRLF"}
-    post_response = client.post("/rovers", data=json.dumps(payload), content_type="application/json")
-    assert post_response.status_code == 201
-    rover_id = post_response.json().get("id")
-    assert rover_id is not None
-
-    # Dispatch the rover using a hypothetical endpoint
-    dispatch_payload = {"destination": {"x": 3, "y": 3}}
-    dispatch_response = client.post(
-        f"/rovers/{rover_id}/dispatch",
-        data=json.dumps(dispatch_payload),
-        content_type="application/json"
-    )
-    assert dispatch_response.status_code == 200
-    # Optionally, verify that the rover's position or status has been updated
-
-
-# Test controlling a rover
-def test_control_rover(client):
-    # Create a rover to control
-    payload = {"commands": "FFRLF"}
-    post_response = client.post("/rovers", data=json.dumps(payload), content_type="application/json")
-    assert post_response.status_code == 201
-    rover_id = post_response.json().get("id")
-    assert rover_id is not None
-
-    # Control the rover (using a hypothetical control command)
-    control_payload = {"command": "start"}
-    control_response = client.post(
-        f"/rovers/{rover_id}/control",
-        data=json.dumps(control_payload),
-        content_type="application/json"
-    )
-    assert control_response.status_code == 200
-    # Optionally, you can check the rover's state after this command
+    with client.websocket_connect(f"/ws/rovers/{rover_id}") as websocket:
+        # Send a move command via WebSocket and check for a valid response message
+        websocket.send_text("M")
+        message = websocket.receive_json()
+        assert "message" in message

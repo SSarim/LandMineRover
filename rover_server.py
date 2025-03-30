@@ -1,3 +1,4 @@
+# Sarim Shahwar
 from fastapi import FastAPI, status, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -5,17 +6,13 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
+from helper import *
 import helper
 import random
 import threading
-import hashlib
 
-# SET UP
+#Main Server File
 app = FastAPI()
-origins = [
-    "http://localhost:8000",
-    "https://coe892lab42025GW.azurewebsites.net/*"
-]
 # Rover statuses
 ROVER_IDLE = "ROVER IS IDLE"
 ROVER_OPERATION_FINISHED = "ROVER OPERATION HAS COMPLETED"
@@ -24,14 +21,14 @@ ROVER_STATUS_ELIMINATED = "ROVER STATUS: ELIMINATED"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
     allow_credentials=True
 )
 
 # Static files directory and use created front end index.html
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-
 @app.get("/", response_class=HTMLResponse)
 async def read_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -39,38 +36,33 @@ async def read_index(request: Request):
 
 # Global data notations --> map, mines, rovers, commands
 grid, mines = helper.generate_map_grid(row=5, col=10, update_change=True)
-rovers = []  # Dict key of: id, commands, status, position, executed_commands
+rovers = []  # Dictionary key id, commands, status, position, executed_commands
 commands = [helper.get_rover_commands(i) for i in range(1, 11)]
 id_list = random.sample(range(100, 1000), 900)
 valid_commands = ['L', 'R', 'M', 'D']
 state_lock = threading.Lock()
 
 
-# Pydantic Model Setup
+# Base Model Setup (pydantic)
 class MapDimensions(BaseModel):
     row: int
     col: int
-
 
 class MineCreate(BaseModel):
     row: int
     col: int
     serialNum: int
 
-
 class MineUpdate(BaseModel):
     row: Optional[int] = None
     col: Optional[int] = None
     serialNum: Optional[int] = None
 
-
 class RoverCreate(BaseModel):
     commands: str
 
-
 class RoverUpdate(BaseModel):
     commands: str
-
 
 # Endpoints (Map)
 @app.get("/map", status_code=status.HTTP_200_OK)
@@ -81,8 +73,6 @@ def get_map():
             "col": len(grid[0]),
             "map": grid
         }
-
-
 @app.put("/map", status_code=status.HTTP_201_CREATED)
 def update_map(dim: MapDimensions):
     global grid, mines
@@ -90,7 +80,6 @@ def update_map(dim: MapDimensions):
         grid, mines = helper.generate_map_grid(row=dim.row, col=dim.col)
         grid[0][0] = 0
         return {"message": "Map updated", "row": len(grid), "col": len(grid[0]), "map": grid}
-
 
 # Endpoints (Mines)
 @app.get("/mines")
@@ -127,7 +116,7 @@ def create_mine_endpoint(new_mine: MineCreate):
     with state_lock:
         if grid[new_mine.row][new_mine.col]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="Mine already exists at the given location")
+                                detail="Mine already exists at the set location")
         grid[new_mine.row][new_mine.col] = 1
         mines.append([new_mine.row, new_mine.col, new_mine.serialNum])
         return {"message": "Mine created", "id": new_mine.serialNum}
@@ -203,12 +192,12 @@ def update_rover_endpoint(id: int, rover_update: RoverUpdate):
             if rover["id"] == id:
                 if rover["status"] not in [ROVER_IDLE, ROVER_OPERATION_FINISHED]:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                        detail="Cannot update commands while rover is in progress")
+                                        detail="Cannot update commands while rover is in moving")
                 new_cmd = rover_update.commands.upper()
                 for cmd in new_cmd:
                     if cmd not in valid_commands:
                         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                            detail="Invalid command in command list")
+                                            detail="Not a valid command")
                 rover["commands"] = new_cmd
                 rover["executed_commands"] = ""
                 rover["status"] = ROVER_IDLE
@@ -245,7 +234,7 @@ def dispatch_rover_endpoint(id: int):
                                 rover["status"] = ROVER_STATUS_ELIMINATED
                                 rover["executed_commands"] = executed
                                 rover["position"] = (r, c)
-                                return {"message": "Rover exploded upon encountering a mine", "rover": rover}
+                                return {"message": "Rover exploded on a mine", "rover": rover}
                         else:
                             executed += cmd
                     else:
@@ -274,13 +263,11 @@ def dispatch_rover_endpoint(id: int):
                 rover["executed_commands"] = executed
                 rover["position"] = (r, c)
                 return {"message": "Rover dispatched successfully", "rover": rover}
-        raise HTTPException(status_code=404, detail="Rover not found")
-
+        raise HTTPException(status_code=404, detail="Rover was not found")
 
 @app.get("/commands/{id}")
 def get_commands_endpoint(id: int):
     return {"commands": helper.get_rover_commands(id)}
-
 
 # Endpoint (WebSockets)
 @app.websocket("/ws/rovers/{id}")
@@ -334,7 +321,6 @@ async def websocket_control_rover(websocket: WebSocket, id: int):
                     }
                     should_explode = True
                 else:
-                    # Process commands normally.
                     if cmd == "L":
                         direction = (direction - 1) % 4
                         response = {"command": "L", "result": True, "direction": direction}
@@ -371,9 +357,8 @@ async def websocket_control_rover(websocket: WebSocket, id: int):
                     target_rover["executed_commands"] += cmd
                     target_rover["position"] = (r, c)
 
-            # Send the response to the client.
-            await websocket.send_json(response)
-
+            # Send the response (pull from helper).
+            await websocket.send_json({"message": format_response_message(response)})
 
             # If the rover exploded, close the websocket.
             if should_explode:
@@ -386,14 +371,3 @@ async def websocket_control_rover(websocket: WebSocket, id: int):
         return
 
 
-# Disarming Mine (similar to Deminer)
-def disarm_mine(serial) -> str:
-    serial = str(serial)
-    pin = 0
-    while True:
-        candidate = str(pin)
-        temp_key = serial + candidate
-        hashed = hashlib.sha256(temp_key.encode('utf-8')).hexdigest()
-        if hashed.startswith("000000"):
-            return candidate
-        pin += 1
