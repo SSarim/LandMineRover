@@ -1,0 +1,14 @@
+Start & Stop:
+docker start RoverServer
+docker stop RoverServer
+
+Image Build:
+docker build -t roverserver:latest .
+docker rm RoverServer
+docker run --name RoverServer -p 8000:8000 roverserver:latest
+
+Set & Push (OR FOR ANY EDITS AND PUSH UPDATES):
+docker tag roverserver:latest coe892lab42025gw.azurecr.io/roverserver:latest
+docker push coe892lab42025gw.azurecr.io/roverserver:latest
+
+

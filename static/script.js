@@ -1,7 +1,7 @@
 // Sarim Shahwar
-const serverUrl = "http://localhost:8000";
+
 async function loadMap() {
-    const res = await fetch(serverUrl + "/map");
+    const res = await fetch( "/map");
     const data = await res.json();
     const map = data.map;
     const container = document.getElementById("map-container");
@@ -54,7 +54,7 @@ async function loadMap() {
 }
 
 async function loadMines() {
-    const res = await fetch(serverUrl + "/mines");
+    const res = await fetch("/mines");
     const data = await res.json();
     const minesList = document.getElementById("mines1");
     minesList.innerHTML = "<h4>🧾 Existing Mines</h4>";
@@ -66,7 +66,7 @@ async function loadMines() {
 }
 
 async function loadRovers() {
-    const res = await fetch(serverUrl + "/rovers");
+    const res = await fetch( "/rovers");
     const data = await res.json();
     const roversList = document.getElementById("rovers-list");
     roversList.innerHTML = "<h4>🧾 Rover Fleet</h4>";
@@ -84,7 +84,7 @@ document.getElementById("create-mine-form").addEventListener("submit", async (e)
     const serialNum = parseInt(document.getElementById("mine-serial").value);
     const row = parseInt(document.getElementById("mine-y").value);
     const col = parseInt(document.getElementById("mine-x").value);
-    const res = await fetch(serverUrl + "/mines", {
+    const res = await fetch( "/mines", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({row, col, serialNum})
@@ -102,7 +102,7 @@ document.getElementById("create-rover-form").addEventListener("submit", async (e
     const initialX = 0;
     const initialY = 0;
     const initialDirection = 2;
-    const res = await fetch(serverUrl + "/rovers", {
+    const res = await fetch( "/rovers", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
@@ -124,7 +124,7 @@ document.getElementById("dispatch-rover-form").addEventListener("submit", async 
     dispatchStatus.textContent = "Dispatching Rover...";
     dispatchBtn.disabled = true;
     const rover_id = document.getElementById("dispatch-rover-id").value;
-    const res = await fetch(serverUrl + "/rovers/" + rover_id + "/dispatch", {method: "POST"});
+    const res = await fetch( "/rovers/" + rover_id + "/dispatch", {method: "POST"});
     const data = await res.json();
     alert(data.message);
     dispatchStatus.textContent = "";
@@ -139,7 +139,10 @@ let ws;
 document.getElementById("open-ws-btn").addEventListener("click", async () => {
     const rover_id = prompt("Enter Created Rover ID for WebSocket control:");
     if (!rover_id) return;
-    ws = new WebSocket("ws://localhost:8000/ws/rovers/" + rover_id);
+    const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+    const host = window.location.host;
+    const endpoint = protocol + host + "/ws/rovers/" + rover_id;
+    ws = new WebSocket(endpoint);
     ws.onopen = () => {
         document.getElementById("ws-status").textContent = "Connected";
         document.getElementById("ws-control").style.display = "block";

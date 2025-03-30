@@ -297,7 +297,6 @@ async def websocket_control_rover(websocket: WebSocket, id: int):
         while True:
             data = await websocket.receive_text()
             cmd = data.strip().upper()
-            response = {}
             should_explode = False
 
             with state_lock:
