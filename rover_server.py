@@ -14,7 +14,7 @@ import hashlib
 app = FastAPI()
 origins = [
     "http://localhost:8000",
-    "https://coe892lab42025G.azurewebsites.net/*"
+    "https://coe892lab42025GW.azurewebsites.net/*"
 ]
 # Rover statuses
 ROVER_IDLE = "ROVER IS IDLE"
@@ -355,7 +355,7 @@ async def websocket_control_rover(websocket: WebSocket, id: int):
                             r, c = nr, nc
                             response = {"command": "M", "result": True, "new_position": [r, c]}
                         else:
-                            response = {"command": "M", "result": False, "error": "Out of bounds"}
+                            response = {"command": "M", "result": False, "error": "Rover hit the end of the map"}
                     elif cmd == "D":
                         if mine_found:
                             # Disarm the mine if it exists.
@@ -364,7 +364,7 @@ async def websocket_control_rover(websocket: WebSocket, id: int):
                             mines.remove(mine_found)
                             grid[r][c] = 0
                         else:
-                            response = {"command": "D", "result": False, "error": "No mine at current position"}
+                            response = {"command": "D", "error": "No mine at current position"}
                     else:
                         response = {"error": "Invalid command"}
 
@@ -373,6 +373,7 @@ async def websocket_control_rover(websocket: WebSocket, id: int):
 
             # Send the response to the client.
             await websocket.send_json(response)
+
 
             # If the rover exploded, close the websocket.
             if should_explode:
